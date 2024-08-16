@@ -15,6 +15,8 @@ from flask import Flask
 
 # Create flask application
 app = Flask("Manticore Asset Explorer")
+from flask_cors import CORS
+CORS(app, resources={r"/*": {"origins": "*"}})  # Allow all origins for testing purposes
 
 # Print the welcome message
 print(welcome_message)

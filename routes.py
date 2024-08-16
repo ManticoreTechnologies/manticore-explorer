@@ -27,7 +27,7 @@ def filter(mode):
     pattern = request.args.get('pattern', '')
 
     # Compile the regex pattern
-    regex = re.compile(pattern)
+    regex = re.compile(pattern, re.IGNORECASE)
 
     # Filter assets based on the regex pattern matching the keys
     filtered_assets = {name: data for name, data in by_mode.items() if regex.search(name)}

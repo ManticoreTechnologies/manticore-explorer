@@ -2,11 +2,11 @@ import os
 import subprocess
 from utils import config
 
-SERVICE_NAME = "manticore_ipfs"
+SERVICE_NAME = "manticore_explorer"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
 SERVICE_CONTENT = f"""[Unit]
-Description=Manticore Crypto Faucet Gunicorn Service
+Description=Manticore Asset Explorer Gunicorn Service
 After=network.target
 
 [Service]

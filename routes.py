@@ -7,104 +7,69 @@ from startup import app
 from rpc import send_command
 from utils import create_logger, config, load_map
 from flask import jsonify, request, send_file, abort
-import time
-import os
 import re
+import math
 
-def paginate_dict(data_dict, limit, offset):
-    """Helper function to paginate a dictionary."""
-    keys = list(data_dict.keys())
-    paginated_keys = keys[offset:offset + limit]
-    paginated_dict = {k: data_dict[k] for k in paginated_keys}
-    return paginated_dict
+def paginate_list(data_list, limit, page):
+    """Helper function to paginate a list based on page number."""
+    start = (page - 1) * limit
+    end = start + limit
+    return data_list[start:end]
 
-@app.route('/filter/<mode>')
-def filter(mode):
-    # Load the map based on the mode
-    by_mode = load_map(f"by_{mode}")
-    
-    # Get the pattern from query parameters
-    pattern = request.args.get('pattern', '')
-
-    # Compile the regex pattern
-    regex = re.compile(pattern, re.IGNORECASE)
-
-    # Filter assets based on the regex pattern matching the keys
-    filtered_assets = {name: data for name, data in by_mode.items() if regex.search(name)}
-
-    # Apply pagination
+@app.route('/search')
+def search():
+    # Extract query parameters
+    query = request.args.get('query', '')
     limit = int(request.args.get('limit', 10))  # Default limit is 10
-    offset = int(request.args.get('offset', 0))  # Default offset is 0
-    paginated_filtered_assets = paginate_dict(filtered_assets, limit, offset)
+    page = int(request.args.get('page', 1))  # Default page is 1
+    reissuable = request.args.get('reissuable', None)  # Get reissuable filter
+    sort_by = request.args.get('sort', 'units')
+
+    if reissuable == "false":
+        reissuable = "0"
+    elif reissuable == "true":
+        reissuable = "1"
+
+    # Load the map by name and units
+    by_name = load_map("by_name") if reissuable is None else load_map("by_reissuable")[reissuable]
+    by_units = load_map("by_units") 
+    if sort_by == "height":
+        by_units = load_map("by_height")
+    elif sort_by == "amount":
+        by_units = load_map("by_amount")
+
+    if sort_by != "name":
+        # Flatten the by_units map into a list while preserving order
+        ordered_assets = []
+        for unit, assets in by_units.items():
+            ordered_assets.extend(assets)
+    elif sort_by == "name":
+        ordered_assets = by_name.keys()
     
-    return jsonify(paginated_filtered_assets)
 
 
-# Currently supports modes: amount, blockhash, height, ipfshash, name, reissuable, units
-@app.route('/sort/<mode>')
-def sort(mode):
-    # Load the map based on the mode
-    by_mode = load_map(f"by_{mode}")
+    # Filter the list by the name using the query while maintaining order
+    regex = re.compile(query, re.IGNORECASE)
+    filtered_assets = [asset for asset in ordered_assets if regex.search(asset)]
 
-    # Get query parameters for pagination and sorting order
-    limit = int(request.args.get('limit', 10))  # Default limit is 10
-    offset = int(request.args.get('offset', 0))  # Default offset is 0
-    ascending = request.args.get('ascending', 'true').lower() == 'true'  # Default to ascending order
+    # Total assets after filtering
+    total_assets = len(filtered_assets)
 
-    # Determine the sorting key type
-    if mode in ['name', 'ipfshash', 'blockhash']:
-        sorted_keys = sorted(by_mode.keys(), reverse=not ascending)
-    elif mode == 'amount':
-        sorted_keys = sorted(by_mode.keys(), key=float, reverse=not ascending)
-    else:
-        sorted_keys = sorted(by_mode.keys(), key=int, reverse=not ascending)
+    # Calculate total pages
+    total_pages = math.ceil(total_assets / limit)
 
-    # Apply pagination to the sorted keys
-    paginated_sorted_keys = sorted_keys[offset:offset + limit]
+    # Apply pagination to the filtered list
+    paginated_assets = paginate_list(filtered_assets, limit, page)
 
-    # Create the paginated dictionary
-    paginated_dict = {k: by_mode[k] for k in paginated_sorted_keys}
-
-    return jsonify(paginated_dict)
-
-from datetime import datetime
-
-@app.route('/newest')
-def newest():
-    by_height = load_map("by_height")
-    count = int(request.args.get('count', 10))
-
-    # Sort the keys as integers in descending order
-    sorted_keys = sorted(by_height.keys(), key=int, reverse=True)
+    # Create a dictionary for the paginated assets using by_name data
+    response_assets = [by_name[asset_name] for asset_name in paginated_assets if asset_name in by_name]
     
-    last_x_assets = []
+    # Return the paginated data along with metadata
+    response = {
+        'total_assets': total_assets,
+        'total_pages': total_pages,
+        'current_page': page,
+        'results': response_assets
+    }
 
-    # Iterate through the sorted blocks and collect assets until we reach the count
-    for key in sorted_keys:
-        assets_in_block = by_height[key]
-        for asset_name, asset_data in assets_in_block.items():
-            # Get the block time using the blockhash
-            blockhash = asset_data.get('blockhash')
-            block_info = send_command('getblock', [blockhash])
-            block_time = block_info.get('time')
-            
-            # Convert the block time to a human-readable date string
-            block_date = datetime.utcfromtimestamp(block_time).strftime('%Y-%m-%d %H:%M:%S')
-
-            # Append asset data along with block time and date
-            asset_with_time = {
-                'asset_name': asset_name,
-                'data': asset_data,
-                'block_time': block_time,
-                'block_date': block_date
-            }
-            last_x_assets.append(asset_with_time)
-
-            if len(last_x_assets) == count:
-                break
-        if len(last_x_assets) == count:
-            break
-
-    return jsonify(last_x_assets)
-
-
+    return jsonify(response)

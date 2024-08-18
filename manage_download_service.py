@@ -2,11 +2,11 @@ import os
 import subprocess
 from utils import config
 
-SERVICE_NAME = "manticore_explorer_daemon"
+SERVICE_NAME = "manticore-explorer-daemon"
 SERVICE_FILE = f"/etc/systemd/system/{SERVICE_NAME}.service"
 
 SERVICE_CONTENT = f"""[Unit]
-Description=Manticore Asset Explorer Daemon Service
+Description=Manticore Explorer Daemon Service
 After=network.target
 
 [Service]

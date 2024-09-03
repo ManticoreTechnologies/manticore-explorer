@@ -9,6 +9,7 @@ from utils import create_logger, config, load_map
 from flask import jsonify, request, send_file, abort
 import re
 import math
+import random
 
 def paginate_list(data_list, limit, page):
     """Helper function to paginate a list based on page number."""
@@ -38,28 +39,41 @@ def search():
     elif sort_by == "amount":
         by_units = load_map("by_amount")
 
-    if sort_by != "name":
-        # Flatten the by_units map into a list while preserving order
-        ordered_assets = []
-        for unit, assets in by_units.items():
-            ordered_assets.extend(assets)
-    elif sort_by == "name":
-        ordered_assets = by_name.keys()
-    
+    # Handle special queries
+    if query.startswith('%'):
+        if query == '%random':
+            # Generate a random list of assets
+            all_assets = list(by_name.keys())
+            random.shuffle(all_assets)
+            ordered_assets = all_assets
+        elif query == '%all':
+            # Return all assets ordered as per the sort criteria
+            ordered_assets = list(by_name.keys())
+        else:
+            # If the special query is not recognized, return an error
+            abort(400, description="Invalid special query")
+    else:
+        # Normal query handling
+        if sort_by != "name":
+            # Flatten the by_units map into a list while preserving order
+            ordered_assets = []
+            for unit, assets in by_units.items():
+                ordered_assets.extend(assets)
+        elif sort_by == "name":
+            ordered_assets = list(by_name.keys())
 
-
-    # Filter the list by the name using the query while maintaining order
-    regex = re.compile(query, re.IGNORECASE)
-    filtered_assets = [asset for asset in ordered_assets if regex.search(asset)]
+        # Filter the list by the name using the query while maintaining order
+        regex = re.compile(query, re.IGNORECASE)
+        ordered_assets = [asset for asset in ordered_assets if regex.search(asset)]
 
     # Total assets after filtering
-    total_assets = len(filtered_assets)
+    total_assets = len(ordered_assets)
 
     # Calculate total pages
     total_pages = math.ceil(total_assets / limit)
 
     # Apply pagination to the filtered list
-    paginated_assets = paginate_list(filtered_assets, limit, page)
+    paginated_assets = paginate_list(ordered_assets, limit, page)
 
     # Create a dictionary for the paginated assets using by_name data
     response_assets = [by_name[asset_name] for asset_name in paginated_assets if asset_name in by_name]
